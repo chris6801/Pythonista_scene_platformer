@@ -10,7 +10,26 @@ SCREEN_WIDTH, SCREEN_HEIGHT = get_screen_size()
 
 PLAY_WIDTH, PLAY_HEIGHT = SCREEN_WIDTH, SCREEN_HEIGHT
 
+TILE_SIZE = 64
+
 GRAVITY = -5
+
+LEVEL_ONE = [
+    '000000000000000000000000000000',
+    '000000000000000000000000110000',
+    '000001001100110010001000000000',
+    '000000000000011110000110000000',
+    '000000000000000000000000000000',
+    '000011100000001110000000111000',
+    '002111110000011111000001111100',
+    '111111111111111111110011111111'
+    ]
+
+LEVEL_ONE = list(reversed(LEVEL_ONE))
+            
+MAP_KEY = {'0': 'air',
+           '1': 'ground',
+           '2': 'player'}
 
 jumping_textures = [
     'shp:Flash00',
@@ -28,29 +47,46 @@ walk_textures = [
 class Player(SpriteNode):
     def __init__(self, x, y, *args, **kwargs):
         SpriteNode.__init__('plf:AlienBlue_front', position=(x, y))
-
+        
+        self.player_box = ShapeNode(ui.Path.rect(0, 0, 64, 80),  position = (self.player.position), anchor_point=(0.5,0), fill_color = 'clear', stroke_color='red')
+        self.add_child(self.player_box)
+        
+        self.jumping = False
+        self.on_ground = False
+        self.accel = [0, 0]
+        self.delta = [0, 0]
+        self.jumping_n = 0
+        
+        self.move_touch = None
+    
 class MyScene (Scene):
+    
+    def load_map(self, map_data):
+        for j, row in enumerate(map_data):
+            for i, col in enumerate(row):
+                if MAP_KEY[col] == 'ground':     
+                    tile = SpriteNode('plf:Ground_Grass', position = (i * TILE_SIZE, j * TILE_SIZE), anchor_point=(0, 0)) 
+                    self.ground.add_child(tile)
+                    self.physics_objects.append(tile)
+                    
+                if MAP_KEY[col] == 'player':
+                    initial_player_pos = i, j
+    
     def setup(self):
+        initial_player_pos = 0, 0
         self.physics_objects = []
         self.ground = Node(parent=self)
         self.background_color = 'cyan'
-        for i in range(0, int(PLAY_WIDTH + 64), 64):
-            tile = SpriteNode('plf:Ground_StoneCenter', position = (i, SCREEN_HEIGHT // 3), anchor_point=(0, 0)) 
-            self.ground.add_child(tile)
-            self.physics_objects.append(tile)
+        self.offset = [0, 0]
             
+        self.load_map(LEVEL_ONE)
         
-        self.platforms = Node(parent=self)
-        for i in range(0, 256, 64):
-            tile = SpriteNode('plf:Ground_Grass', position=(100 + i, 500), anchor_point=(0,0))
-            self.platforms.add_child(tile)
-            self.physics_objects.append(tile)
-            
-            
+        #self.player = Player(*initial_player_pos)
+        
         self.player = SpriteNode('plf:AlienBlue_front')
         self.add_child(self.player)
         self.player.anchor_point = (0.5,0)
-        self.player.position = (PLAY_WIDTH // 2, SCREEN_HEIGHT // 3 + PLAY_HEIGHT // 3)
+        self.player.position = initial_player_pos
         self.player.z_position = 0
         
         self.player_box = ShapeNode(ui.Path.rect(0, 0, 64, 80),  position = (self.player.position), anchor_point=(0.5,0), fill_color = 'clear', stroke_color='red')
@@ -60,8 +96,6 @@ class MyScene (Scene):
         self.index = 0
         self.walk_count = 0
         self.walk_idx = 0
-        #for t in jumping_textures:
-            #t.parent=self.player
         
         self.left_button = SpriteNode('iow:arrow_left_b_256', anchor_point = (0,0), position = (-75,0))
         self.left_button.bbox
@@ -98,7 +132,7 @@ class MyScene (Scene):
         # collision detection
         # move and check in horizontal then vertical to avoid weird behavior
         # frame indices are 0: x pos, 1: y pos, 2: width, 3: height
-        self.player_box.position = self.player.position
+        #self.player_box.position = self.player.position
         #self.player.anchor_point = (0, 0)
         self.player.position += self.delta[0], 0
         self.player_box.position = self.player.position
@@ -106,7 +140,7 @@ class MyScene (Scene):
             if self.player_box.frame.intersects(obj.frame):
                 
                 if self.delta[0] < 0:
-                    self.player.position = obj.frame.max_x , self.player.position[1]
+                    self.player.position = obj.frame.max_x + (self.player.frame.w / 2), self.player.position[1]
                     
                 if self.delta[0] > 0:
                     self.player.position = obj.frame.x - self.player.frame.w + (self.player.frame.w/2) - 2, self.player.position[1]
@@ -195,6 +229,18 @@ class MyScene (Scene):
         else:
             self.player.texture = Texture('plf:AlienBlue_front')
             
+        #scrolling background logic
+        if self.player.position[0] >= SCREEN_WIDTH - (SCREEN_WIDTH / 4) and self.delta[0] > 0:
+            self.offset[0] = self.delta[0]        
+        elif self.player.position[0] <= SCREEN_WIDTH / 4 and self.delta[0] < 0:
+            self.offset[0] = self.delta[0]
+        else:
+            self.offset[0] = 0
+            
+        for child in self.ground.children:
+            child.position -= self.offset
+            
+        self.player.position -= self.offset 
         
             
         print('delta:', self.delta)
@@ -224,8 +270,12 @@ class MyScene (Scene):
     def touch_ended(self, touch):
         if touch.touch_id == self.jump_touch:
             pass
-        if touch.touch_id == self.move_touch or not self.touches:
-            self.accel[0] *= -1
+        if self.move_touch or not self.touches:
+            if self.delta[0] > 0:
+                self.accel[0] = -0.25
+            elif self.delta[0] < 0:
+                self.accel[0] = 0.25
+            print('accel: ', self.accel[0])
             self.move_touch = None
         
 
